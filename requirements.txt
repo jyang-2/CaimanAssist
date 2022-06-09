@@ -1,0 +1,12 @@
+pydantic>=1.9.0
+
+yaml>=0.2.5
+pyyaml>=5.4.1
+
+numpy>=1.20.3
+pandas>=1.2.5
+
+caiman>=1.8.9
+utils2p>=0.1.0
+
+attrs>=21.3.0
