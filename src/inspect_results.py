@@ -1,3 +1,35 @@
+""" Module with functions to help visually inspect 3D caiman motion correction results more easily.
+
+Caiman demo code mostly, downsampling movies and viewing individual planes.
+
+Record bad planes (planes to drop post-motion correction due to z-drift) in
+{movie_folder}/caiman_mc/moco_metrics.json, and define which moco result (rigid or pw-rigid) to use.
+
+Check the top and bottom-most planes first, to see how many planes each moco result loses. If the
+movie has 16 planes, check planes 0, 1, ... until the corrected plane movie is usable; Do the
+same for plane 15, 14, etc.
+
+Example:
+
+    {...
+        "bad_planes_rig": [0, 1, 14, 15],
+
+        "bad_planes_els": [0, 15],
+
+        "which_movie": "m_els" (or "m_rig")
+    }
+
+To load contents of caiman_mc quickly:
+
+>>>  m_rig, m_els, files = load_moco_results(moco_dir)
+
+To observe moco_metrics.json:
+
+>>> with open(files['moco_metrics'], 'r') as f:
+>>>        moco_metrics = json.load(f)
+
+"""
+
 from pathlib import Path
 import caiman as cm
 from caiman.motion_correction import MotionCorrect
@@ -12,7 +44,6 @@ moco_fname_templates = {
     "m_els": "*_els_*.mmap",
     "moco_metrics": "moco_metrics.json"
 }
-
 
 
 def parse_folder_contents(folder, fname_templates):
@@ -57,23 +88,52 @@ def resize_movie_in_time(movie, downsample_ratio):
 
 def load_moco_results(folder, downsample_ratio=0.05):
     files = parse_folder_contents(folder, moco_fname_templates)
-    m_rig = resize_movie_in_time(cm.load(files['m_rig']), downsample_ratio=downsample_ratio)
-    m_els = resize_movie_in_time(cm.load(files['m_els']), downsample_ratio=downsample_ratio)
+    movie_rig = resize_movie_in_time(cm.load(files['m_rig']), downsample_ratio=downsample_ratio)
+    movie_els = resize_movie_in_time(cm.load(files['m_els']), downsample_ratio=downsample_ratio)
 
-    return cm.movie(m_rig), cm.movie(m_els), files
+    return cm.movie(movie_rig), cm.movie(movie_els), files
 
 
-# %%
+# %% load motion corrected movies
+# moco_dir = Path("/local/matrix/Remy-Data/projects/odor_unpredictability/processed_data/2022-09-27"
+#                 "/1/unpredictable0/caiman_mc")
 
-NAS_PROC_DIR = Path("/local/storage/Remy/narrow_odors/processed_data")
-folder_list = sorted(list(NAS_PROC_DIR.rglob("*tsub*/*/caiman_mc")))
-for i, item in enumerate(folder_list):
-    print(f"{i:02d}.\t{item}")
+# ask user for directory path
+moco_dir = Path(input("Enter path to caiman_mc folder: "))
 
-# %%
-idx = 2
-folder = folder_list[idx]
-print(folder.parts[-5:])
-files = parse_folder_contents(folder_list[idx], moco_fname_templates)
+files = parse_folder_contents(moco_dir, moco_fname_templates)
 m_rig = cm.load(files['m_rig'])
 m_els = cm.load(files['m_els'])
+
+# %% Inspect rigid ("m_rig") moco results
+
+plane = 1
+downsample_ratio = 0.05
+
+plane_ds = m_rig[:, :, :, plane].resize(1, 1, downsample_ratio)
+print(f'M_RIG: downsampled plane {plane}.')
+plane_ds.play(q_max=99.5, fr=60, magnification=2)
+
+# %% Inspect pw_rigid (non-rigid, i.e. elastic/"m_els") results
+
+plane = 0
+downsample_ratio = 0.1
+
+# downsample plane
+plane_ds = m_els[:, :, :, plane].resize(1, 1, downsample_ratio)
+print(f'M_ELS: downsampled plane {plane}.')
+
+# play downsampled plane
+plane_ds.play(q_max=99.5, fr=60, magnification=2)
+
+# %% [markdown]
+"""
+Once `bad_planes_rig(els)` and `which_movie` are set in motion_metrics.json, save the chosen 
+corrected movie as a suite2p-ordered .h5 file in folder `source_extraction_s2p`, in the same 
+parent directory as motion correction folder **caiman_mc** (`moco_dir`).
+
+>>> from src import convert
+>>> convert.copy_to_suite2p_from_moco_dir(moco_dir) 
+"""
+
+
