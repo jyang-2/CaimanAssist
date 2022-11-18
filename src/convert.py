@@ -3,6 +3,7 @@ import caiman as cm
 import utils2p
 import json
 import numpy as np
+import parse
 
 movie_base_savename = 'Image_001_001'
 default_save_dir = 'fast_dir'  # [fast_dir, parent_dir]
@@ -10,6 +11,19 @@ fast_disk = Path("/home/remy/Documents/caiman-fast-disk")
 
 caiman_dim_ord = 'txyz'
 suite2p_dim_ord = 'tzyx'
+
+
+def mmap_shape(filename):
+    r = parse_mmap_filename(filename)
+    return r['frames'], r['d1'], r['d2'], r['d3']
+
+
+def parse_mmap_filename(filename):
+    ftemplate = "{basename:w}_{movie_type:l}__" \
+                "d1_{d1:d}_d2_{d2:d}_d3_{d3:d}_order_{order}_frames_{" \
+                "frames:d}_.mmap"
+    r = parse.parse(ftemplate, filename)
+    return r
 
 def have_same_parent(file_list, n=0):
     """
@@ -102,6 +116,7 @@ def get_moco_type(mmap_file):
         moco_type = 'rig'
     return moco_type
 
+
 def tiff_list_to_hdf5(tiff_files, h5_savefile=None, input_dim_ord='tzyx', output_dim_ord='txyz'):
     """Loads a list of tiff stack files, and saves to hdf5 file.
         `h5_savefile` is required, if `tiff_files` are not in the same parent folder."""
@@ -141,7 +156,8 @@ def stk_dir_to_hdf5(stk_dir, h5_savefile=None, input_dim_ord='tzyx', output_dim_
     return h5_savefile
 
 
-def split_mmap_to_tiffs(mmap_file, batch_size=500, tiff_dir=None,
+def split_mmap_to_tiffs(mmap_file, batch_size=500,
+                        tiff_dir=None,
                         input_dim_ord='txyz', output_dim_ord='tzyx'):
 
     dim_ord = [output_dim_ord.index(d) for d in input_dim_ord]
@@ -152,7 +168,6 @@ def split_mmap_to_tiffs(mmap_file, batch_size=500, tiff_dir=None,
     Y = cm.load(mmap_file, is3D=True)
 
     moco_type = get_moco_type(mmap_file)
-
 
     if tiff_dir is None:
         tiff_dir = mmap_file.with_name(moco_type)
@@ -184,21 +199,21 @@ def copy_to_suite2p(moco_dir, movie_type='m_els', copy_as_type='.tif'):
 
     if copy_as_type == '.h5':
         fname_h5 = source_extract_s2p_dir.joinpath(fname_mmap.name).with_suffix('.h5')
-
         print(f"\ncopying:")
         print(f"\t- {fname_mmap}")
         print(f"\t- {fname_h5}")
-
         # convert pw_rigid corrected .mmap file to .h5 dataset in suite2p order ('tzyz')
         saved_file = mmap_to_hdf5(fname_mmap, h5_savefile=fname_h5)
+
     elif copy_as_type == '.tif':
         print(f"\nCopying as batched .tif stacks")
-        saved_file = split_mmap_to_tiffs(fname_mmap, tiff_dir=source_extract_s2p_dir.joinpath(movie_type))
+        saved_file = split_mmap_to_tiffs(fname_mmap,
+                                         tiff_dir=source_extract_s2p_dir.joinpath(movie_type))
     print(f"\tdone")
     return saved_file
 
 
-def copy_to_suite2p_from_moco_dir(moco_dir):
+def copy_to_suite2p_from_moco_dir(moco_dir, copy_as_type='.tif'):
     """Reads moco_metrics.json in moco_dir, and moves the specified .mmap file to
     a new folder, source_extraction_s2p, based on moco_metrics['which_movie'].
 
@@ -206,7 +221,7 @@ def copy_to_suite2p_from_moco_dir(moco_dir):
     with moco_dir.joinpath('moco_metrics.json').open('r') as f:
         moco_metrics = json.load(f)
     print(moco_metrics)
-    saved_file = copy_to_suite2p(moco_dir, moco_metrics['which_movie'])
+    saved_file = copy_to_suite2p(moco_dir, moco_metrics['which_movie'], copy_as_type=copy_as_type)
     return saved_file
 
 
