@@ -32,21 +32,8 @@ import utils2p
 from caiman.motion_correction import MotionCorrect
 from itertools import chain
 
-# %%
-fast_disk = Path("/home/remy/Documents/caiman-fast-disk")
 
-prj = 'natural_mixtures'
-
-if prj == 'natural_mixtures':
-    # NAS_PRJ_DIR = Path('/local/storage/Remy/natural_mixtures')
-    # NAS_PROC_DIR = NAS_PRJ_DIR.joinpath('processed_data')
-    NAS_PRJ_DIR = Path("/local/matrix/Remy-Data/projects/natural_mixtures")
-    NAS_PROC_DIR = NAS_PRJ_DIR.joinpath('processed_data')
-    CAIMAN_FAST_DISK = Path("/home/remy/Documents/caiman-fast-disk")
-elif prj == 'narrow_odors':
-    NAS_PRJ_DIR = Path('/local/storage/Remy/narrow_odors')
-    NAS_PROC_DIR = NAS_PRJ_DIR.joinpath('processed_data')
-    CAIMAN_FAST_DISK = Path("/home/remy/Documents/caiman-fast-disk")
+CAIMAN_FAST_DISK = Path("/home/remy/Documents/caiman-fast-disk")
 
 
 # %%
@@ -97,7 +84,7 @@ def batched_tiffs_to_hdf5(stk_dir, input_dim_ord='tzyx', output_dim_ord='txyz'):
     Y = cm.load_movie_chain(tiff_files, is3D=True)
     Y = Y.transpose(dim_ord)
 
-    h5_fname = fast_disk.joinpath('Image_001_001.h5')
+    h5_fname = CAIMAN_FAST_DISK.joinpath('Image_001_001.h5')
     Y.save(h5_fname)
     return h5_fname
 
@@ -190,8 +177,72 @@ def save_summary_images(moco_dir):
     return Ym_rig, Ym_els
 
 
+def save_grouped_mean_images(moco_dir, chunk_size=500):
+    fname_rig = list(moco_dir.glob("*_rig_*.mmap"))[0]
+    fname_els = list(moco_dir.glob("*_els_*.mmap"))[0]
+
+    # rigid
+    m_rig = cm.load(fname_rig, is3D=True)
+    split_rig = np.split(np.array(m_rig),
+                         np.arange(chunk_size, m_rig.shape[0], chunk_size)
+                         )
+    grouped_rig_mean = np.stack([x.mean(axis=0).T for x in split_rig])
+    utils2p.save_img(moco_dir.joinpath(f'Ym_rig_{chunk_size}.tif'), grouped_rig_mean)
+
+    # pw_rigid
+    m_els = cm.load(fname_els, is3D=True)
+    split_els = np.split(np.array(m_els),
+                         np.arange(chunk_size, m_els.shape[0], chunk_size)
+                         )
+    grouped_els_mean = np.stack([x.mean(axis=0).T for x in split_els])
+    utils2p.save_img(moco_dir.joinpath(f'Ym_els_{chunk_size}.tif'), grouped_els_mean)
+    return grouped_rig_mean, grouped_els_mean
+
+
+def save_template_images(moco_dir):
+    mc_rig = np.load(moco_dir.joinpath('mc_rig.npy'), allow_pickle=True).item()
+
+    total_template_rig = mc_rig['total_template_rig']
+    utils2p.save_img(moco_dir.joinpath('total_template_rig.tif'), total_template_rig.T)
+
+    template_rig = np.stack(mc_rig['templates_rig'], axis=-1)
+    utils2p.save_img(moco_dir.joinpath('template_rig.tif'),
+                     template_rig.T)
+
+    mc_els = np.load(moco_dir.joinpath('mc_els.npy'), allow_pickle=True).item()
+    template_els = np.stack(mc_els['templates_els'], axis=-1)
+    utils2p.save_img(moco_dir.joinpath('template_els.tif'), template_els.T)
+    #
+    # cm_dim_ord = 'txyz'
+    # s2p_dim_ord = 'tzyx'
+
+    return template_rig, template_els
+
+
+# def save_grouped_mean_images(moco_dir, batch_size=500):
+
+
+def compute_cm_grouped_mean(Y, batch_size=500):
+    Ym_list = [Y[t:t + batch_size, ...].mean(axis=0) for t in range(0, Y.shape[0], batch_size)]
+    Ym_grouped = cm.concatenate(Ym_list, axis=0)
+    return Ym_grouped
+
+
+# def save_batched_mean_images(moco_dir, batch_size=500):
+#     Y = np.load(moco_dir.joinpath('mc_rig.npy'), allow_pickle=True).item()
+#     Ym_list = []
+#     for t in range(0, Y.shape[0], batch_size):
+#         stk_idx = t//batch_size
+#         Ym = Y[t:t + batch_size].mean(axis=0).transpose(0, 3, 2, 1)
+#         Ym_list.append(np.array(Ym))
+#     Ym_grouped =
+#         substack = np.array(Y[t:t+batch_size].transpose(dim_ord))
+#         print(substack.shape)
+#         print(f"...Saving {filestr}")
+#         utils2p.save_img(tiff_dir.joinpath(filestr), np.array(substack))
+
 # %%
-def main(tiff_folder, interactive=False, run_nonrigid=True):
+def main(tiff_folder, mc_dict=None, interactive=False, run_nonrigid=True):
     print(f'\n\nRunning caiman motion correction:')
     print(f'---------------------------------')
     print(f"tiff_folder = {tiff_folder}")
@@ -202,24 +253,28 @@ def main(tiff_folder, interactive=False, run_nonrigid=True):
     # folder in natural_mixtures/processed_data to save 3D motion correction results
     mov_mc_savedir = tiff_folder.parent.joinpath('caiman_mc')
 
-    # mov_mc_savedir = tiff_folder.with_name('caiman_mc')
-
     # =============================================================
     # Section 01. Initialize motion correction parameters
     # =============================================================
+    if mc_dict is None:
+        mc_dict = {
+            'strides': (64 - 8, 64 - 8, 3),  # start a new patch for pw-rigid motion correction every x
+            # # pixels
+            'overlaps': (8, 8, 2),  # overlap between pathes (size of patch strides+overlaps)
+            # 'strides': (96, 96, 4),  # start a new patch for pw-rigid motion correction every x pixels
+            # 'overlaps': (32, 32, 2),  # overlap between pathes (size of patch strides+overlaps)
+            'max_shifts': (32, 32, 5),  # maximum allowed rigid shifts (in pixels)
+            'max_deviation_rigid': 5,  # maximum shifts deviation allowed for patch with respect to
+            # rigid shifts
+            'pw_rigid': False,  # flag for performing non-rigid motion correction
+            'is3D': True,
+            'niter_rig': 2,
+            'splits_rig': 14,
+            'splits_els': 3,
+            'border_nan': 'copy',
+            'nonneg_movie': True
+        }
     print(f"\nInitializing moco parameters.")
-    mc_dict = {
-        'strides': (64, 64, 5),  # start a new patch for pw-rigid motion correction every x pixels
-        'overlaps': (8, 8, 1),  # overlap between pathes (size of patch strides+overlaps)
-        'max_shifts': (24, 24, 5),  # maximum allowed rigid shifts (in pixels)
-        'max_deviation_rigid': 3,  # maximum shifts deviation allowed for patch with respect to
-        # rigid shifts
-        'pw_rigid': False,  # flag for performing non-rigid motion correction
-        'is3D': True,
-        'niter_rig': 2,
-        'num_frames_split': 500,
-        # 'border_nan': False
-    }
 
     # save motion correction initial parameters to json file
     with open('/home/remy/Documents/caiman-fast-disk/mc_opts0.json', 'w') as f:
@@ -238,7 +293,7 @@ def main(tiff_folder, interactive=False, run_nonrigid=True):
     if 'dview' in locals():
         cm.stop_server(dview=dview)
     c, dview, n_processes = cm.cluster.setup_cluster(
-        backend='local', n_processes=None, single_thread=False)
+            backend='local', n_processes=None, single_thread=False)
 
     print(f'\nRunning rigid motion correction.')
     mc = cm.motion_correction.MotionCorrect(h5_file, dview=dview, **opts.get_group('motion'))
@@ -263,9 +318,14 @@ def main(tiff_folder, interactive=False, run_nonrigid=True):
     print(f'\nRunning non-rigid motion correction.')
     mc.pw_rigid = True  # turn the flag to True for pw-rigid motion correction
 
+    # use the template obtained before to save in computation (optional)
+    # mc.template = mc.mmap_file
+
     # run non-rigid correction (may take a while)
     start = time.time()
-    mc.motion_correct(save_movie=True)
+    mc.motion_correct(save_movie=True,
+                      template=mc.total_template_rig
+                      )
     end = time.time()
     dtime = end - start
     print(f"\texecution time for non-rigid motion correction: {dtime}")
@@ -313,10 +373,10 @@ def main(tiff_folder, interactive=False, run_nonrigid=True):
     print(f"\ncaiman motion correction complete.")
 
     Ym_rig, Ym_els = save_summary_images(mov_mc_savedir)
+    Ym_rig_chunked, Ym_els_chunked = save_grouped_mean_images(mov_mc_savedir, 500)
+    template_rig, template_els = save_template_images(mov_mc_savedir)
 
     return mov_mc_savedir
-
-
 
 
 # %% copy selected movie from 'caiman_mc' --> 'source_extraction_2p'
