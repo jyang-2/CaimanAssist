@@ -186,7 +186,7 @@ def split_mmap_to_tiffs(mmap_file, batch_size=500,
     return tiff_dir
 
 
-def copy_to_suite2p(moco_dir, movie_type='m_els', copy_as_type='.tif'):
+def copy_to_suite2p(moco_dir, movie_type='m_els', copy_as_type='.tif', batch_size=500):
     source_extract_s2p_dir = moco_dir.with_name('source_extraction_s2p')
 
     if not source_extract_s2p_dir.is_dir():
@@ -208,6 +208,7 @@ def copy_to_suite2p(moco_dir, movie_type='m_els', copy_as_type='.tif'):
     elif copy_as_type == '.tif':
         print(f"\nCopying as batched .tif stacks")
         saved_file = split_mmap_to_tiffs(fname_mmap,
+                                         batch_size=batch_size,
                                          tiff_dir=source_extract_s2p_dir.joinpath(movie_type))
     print(f"\tdone")
     return saved_file
