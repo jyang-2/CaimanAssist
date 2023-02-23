@@ -134,26 +134,47 @@ mc_rig = np.load(files['mc_rig'], allow_pickle=True).item()
 mc_els = np.load(files['mc_rig'], allow_pickle=True).item()
 
 # %% Inspect rigid ("m_rig") moco results
-downsample_ratio = 0.1
+downsample_ratio = 0.05
 chunk_size = round(1 / downsample_ratio)
 print(f"chunk_size = {chunk_size}")
-# %%
+
+print('Downsampling rigid movie:')
+print('\t- started: {}'.format(time.ctime()))
 m_rig_ds = cm.movie(darr_downsample_movie(m_rig, chunk_size))
+print('\t- finished: {}'.format(time.ctime()))
+
+
+print('Downsampling els movie:')
+print('\t- started: {}'.format(time.ctime()))
 m_els_ds = cm.movie(darr_downsample_movie(m_els, chunk_size))
+print('\t- finished: {}'.format(time.ctime()))
 
 # %% M_RIG PLANE
 
-plane = 0
+plane = 2
 print(f'M_RIG: downsampled plane {plane}.')
 plane_ds = m_rig_ds[..., plane]
 
-plane_ds.play(q_max=99.5, fr=30, magnification=2)
+plane_ds.play(q_max=99.5, fr=30, magnification=1)
 
-# %%
+# %% rigid downsampled concatenated
+
+# multiplanes = [0, 1, 2, 3]
+# multiplanes = [4, 5, 6, 7]
+multiplanes = [12, 13, 14, 15]
+multiplanes = cm.concatenate([m_rig_ds[..., z] for z in multiplanes], axis=2)
+
+multiplanes.play(q_max=99.5, fr=60, magnification=1)
+
+# %% pw-rigid downsampled concatenated
+
 multiplanes = [0, 1, 2, 3]
-multiplanes = cm.concatenate([m_rig_ds[..., z] for z in multiplanes], axis=1)
+# multiplanes = [4, 5, 6, 7]
+# multiplanes = [12, 13, 14, 15]
+# multiplanes = [-4, -3, -2, -1]
+multiplanes = cm.concatenate([m_els_ds[..., z] for z in multiplanes], axis=2)
 
-multiplanes.play(q_max=99.5, fr=30, magnification=1)
+multiplanes.play(q_max=99.5, fr=60, magnification=2)
 
 # %% Inspect pw_rigid (non-rigid, i.e. elastic/"m_els") results
 
@@ -178,6 +199,9 @@ parent directory as motion correction folder **caiman_mc** (`moco_dir`).
 ```{.python}
 from src import convert
 convert.copy_to_suite2p_from_moco_dir(moco_dir)
+
+# ignore motion_metrics
+convert.copy_to_suite2p(moco_dir, movie_type='m_rig', copy_as_type='.tif')
 ```
 >>> from src import convert, cnmf_3d_pipeline
 >>> convert.copy_to_suite2p_from_moco_dir(moco_dir) 
