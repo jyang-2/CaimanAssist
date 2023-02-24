@@ -265,34 +265,3 @@ def main(moco_dir):
     moco_metrics.save_json(moco_dir.joinpath('moco_metrics.json'))
     print('moco_metrics.json saved.')
     return moco_metrics
-
-
-# %%
-if __name__ == '__main__':
-    # NAS_PROC_DIR = Path("/local/matrix/Remy-Data/projects/natural_mixtures/processed_data")
-    #
-    # folder_list = sorted(list(NAS_PROC_DIR.rglob('kiwi_components_again_with_partial_and_probes/caiman_mc')))
-    # for folder in folder_list:
-    #     print(folder)
-    #     try:
-    #         main(folder)
-    #     except Exception as e:
-    #         print("motion correction metrics did not run sucessfully.")
-    #         print(e)
-
-    USAGE = f"writes shifts from caiman's 3d motion correction to .../<moco_dir>/<els, " \
-            f"rig>_patch_shifts.json,\n" \
-            "and writes motion metrics to .../<moco_dir>/moco_metrics.json"
-    parser = argparse.ArgumentParser(description=USAGE)
-    parser.add_argument('moco_dir', type=str,
-                        help='path to caiman motion correction results folder, probably w/ name '
-                             'caiman_mc')
-    args = parser.parse_args()
-
-    folder = Path(args.moco_dir)
-
-    try:
-        main(folder)
-    except Exception as e:
-        print("motion_metrics.py did not run sucessfully.")
-        print(e)
